@@ -28,105 +28,105 @@ let playing = true;
 
 const gameRef = ref(db, "pigGame/state");
 const playersRef = ref(db, "pigGame/players");
-const connectedRef = ref(db, ".info/connected");
 
-// --- 1. ROBUST PRESENCE & ASSIGNMENT ---
-onValue(connectedRef, (snap) => {
-  if (snap.val() === true) {
-    // We are connected! Now check players
-    onValue(
-      playersRef,
-      (snapshot) => {
-        const players = snapshot.val() || {};
-        let savedID = sessionStorage.getItem("playerAssigned");
+// --- 1. THE HANDSHAKE ASSIGNMENT ---
+onValue(playersRef, (snapshot) => {
+  const players = snapshot.val() || {};
+  let savedID = sessionStorage.getItem("playerAssigned");
 
-        // Validation: If DB is empty but we have an ID, wipe the local ID
-        if (savedID === "0" && !players.player0) {
-          sessionStorage.removeItem("playerAssigned");
-          savedID = null;
-        }
-        if (savedID === "1" && !players.player1) {
-          sessionStorage.removeItem("playerAssigned");
-          savedID = null;
-        }
+  // Fix stale sessions
+  if (savedID === "0" && !players.player0) {
+    sessionStorage.removeItem("playerAssigned");
+    savedID = null;
+  }
+  if (savedID === "1" && !players.player1) {
+    sessionStorage.removeItem("playerAssigned");
+    savedID = null;
+  }
 
-        if (savedID === null) {
-          if (!players.player0) {
-            playerNumber = 0;
-            sessionStorage.setItem("playerAssigned", "0");
-            update(playersRef, { player0: true });
-            onDisconnect(ref(db, "pigGame/players/player0")).remove();
-          } else if (!players.player1) {
-            playerNumber = 1;
-            sessionStorage.setItem("playerAssigned", "1");
-            update(playersRef, { player1: true });
-            onDisconnect(ref(db, "pigGame/players/player1")).remove();
-          }
-        } else {
-          playerNumber = Number(savedID);
-          onDisconnect(
-            ref(db, `pigGame/players/player${playerNumber}`),
-          ).remove();
-        }
+  if (savedID === null) {
+    if (!players.player0) {
+      playerNumber = 0;
+      sessionStorage.setItem("playerAssigned", "0");
+      update(playersRef, { player0: true });
+      onDisconnect(ref(db, "pigGame/players/player0")).remove();
+    } else if (!players.player1) {
+      playerNumber = 1;
+      sessionStorage.setItem("playerAssigned", "1");
+      update(playersRef, { player1: true });
+      onDisconnect(ref(db, "pigGame/players/player1")).remove();
+    }
+  } else {
+    playerNumber = Number(savedID);
+  }
 
-        // UI Labels
-        document.getElementById("name--0").textContent =
-          playerNumber === 0 ? "P1 (YOU)" : "Player 1";
-        document.getElementById("name--1").textContent =
-          playerNumber === 1 ? "P2 (YOU)" : "Player 2";
+  // Update UI Labels
+  document.getElementById("name--0").textContent =
+    playerNumber === 0 ? "P1 (YOU)" : "Player 1";
+  document.getElementById("name--1").textContent =
+    playerNumber === 1 ? "P2 (YOU)" : "Player 2";
 
-        // Waiting Screen Logic
-        if (players.player0 && players.player1) {
-          waitingScreen.classList.add("hidden");
-        } else {
-          waitingScreen.classList.remove("hidden");
-          waitingText.textContent =
-            playerNumber === 0
-              ? "Waiting for Player 2..."
-              : "Waiting for Player 1...";
-        }
-      },
-      { onlyOnce: false },
-    );
+  // START CONDITION: Both must be true
+  if (players.player0 && players.player1) {
+    waitingScreen.classList.add("hidden");
+  } else {
+    waitingScreen.classList.remove("hidden");
+    waitingText.textContent =
+      playerNumber === 0
+        ? "Waiting for Player 2..."
+        : "Waiting for Player 1...";
   }
 });
 
 // --- 2. GAME STATE SYNC ---
 onValue(gameRef, (snapshot) => {
   const state = snapshot.val();
+
+  // If no state exists, Player 0 creates it
   if (!state) {
-    if (playerNumber === 0) syncState();
+    if (playerNumber === 0) {
+      scores = [0, 0];
+      currentScore = 0;
+      activePlayer = 0;
+      playing = true;
+      syncState();
+    }
     return;
   }
 
+  // Update Local Variables
   scores = state.scores || [0, 0];
   currentScore = state.currentScore || 0;
   activePlayer = state.activePlayer ?? 0;
   playing = state.playing ?? true;
 
+  // Update UI
   score0El.textContent = scores[0];
   score1El.textContent = scores[1];
   current0El.textContent = activePlayer === 0 ? currentScore : 0;
   current1El.textContent = activePlayer === 1 ? currentScore : 0;
 
+  // Dice Display
   if (state.dice && playing) {
     diceEl.classList.remove("hidden");
     diceEl.src = `dice-${state.dice}.png`;
     diceOne.classList.toggle("hidden", state.dice !== 1);
   } else {
     diceEl.classList.add("hidden");
+    diceOne.classList.add("hidden");
   }
 
   player0El.classList.toggle("player--active", activePlayer === 0);
   player1El.classList.toggle("player--active", activePlayer === 1);
 
-  // Button Locking
+  // Turn Enforcement
   const isMyTurn = playerNumber === activePlayer && playing;
   btnRoll.disabled = !isMyTurn;
   btnHold.disabled = !isMyTurn;
   btnRoll.style.opacity = isMyTurn ? "1" : "0.3";
   btnHold.style.opacity = isMyTurn ? "1" : "0.3";
 
+  // Winner State
   if (!playing) {
     const winner = scores[0] >= 100 ? 0 : 1;
     document
@@ -175,6 +175,7 @@ btnNew.addEventListener("click", () => {
   syncState(null);
 });
 
+// --- 4. RESET ---
 const fullReset = () => {
   set(ref(db, "pigGame"), null);
   sessionStorage.clear();
