@@ -29,57 +29,75 @@ let playing = true;
 const gameRef = ref(db, "pigGame/state");
 const playersRef = ref(db, "pigGame/players");
 
-// --- 1. THE JOINING HANDSHAKE & PRESENCE ---
+// --- 1. THE STEADY JOINING LOGIC (NO BLINKING) ---
+
+const initConnection = () => {
+  const savedID = sessionStorage.getItem("playerAssigned");
+
+  if (savedID !== null) {
+    playerNumber = Number(savedID);
+    setupPresence();
+  } else {
+    // Check database ONCE to find an empty slot
+    onValue(
+      playersRef,
+      (snapshot) => {
+        if (playerNumber !== null) return; // Prevent double assignment
+
+        const players = snapshot.val() || {};
+        if (!players.player0) {
+          playerNumber = 0;
+          sessionStorage.setItem("playerAssigned", "0");
+          update(playersRef, { player0: true });
+        } else if (!players.player1) {
+          playerNumber = 1;
+          sessionStorage.setItem("playerAssigned", "1");
+          update(playersRef, { player1: true });
+        }
+        setupPresence();
+      },
+      { onlyOnce: true },
+    );
+  }
+};
+
+const setupPresence = () => {
+  if (playerNumber === null) return;
+  // Cleanup if tab closes
+  onDisconnect(ref(db, `pigGame/players/player${playerNumber}`)).remove();
+};
+
+initConnection();
+
+// --- 2. THE UI MONITOR (Watches for Opponent) ---
 onValue(playersRef, (snapshot) => {
   const players = snapshot.val() || {};
 
-  // 1. Identify who YOU are
-  if (playerNumber === null) {
-    const savedID = sessionStorage.getItem("playerAssigned");
-    if (savedID !== null) {
-      playerNumber = Number(savedID);
-    } else {
-      if (!players.player0) {
-        playerNumber = 0;
-        sessionStorage.setItem("playerAssigned", "0");
-        update(playersRef, { player0: true });
-      } else if (!players.player1) {
-        playerNumber = 1;
-        sessionStorage.setItem("playerAssigned", "1");
-        update(playersRef, { player1: true });
-      }
-    }
-  }
-
-  // 2. Setup Auto-Disconnect (Presence)
   if (playerNumber !== null) {
-    onDisconnect(ref(db, `pigGame/players/player${playerNumber}`)).remove();
-  }
+    // Update Labels
+    document.getElementById("name--0").textContent =
+      playerNumber === 0 ? "P1 (YOU)" : "Player 1";
+    document.getElementById("name--1").textContent =
+      playerNumber === 1 ? "P2 (YOU)" : "Player 2";
 
-  // 3. Update Labels so you know your slot
-  document.getElementById("name--0").textContent =
-    playerNumber === 0 ? "P1 (YOU)" : "Player 1";
-  document.getElementById("name--1").textContent =
-    playerNumber === 1 ? "P2 (YOU)" : "Player 2";
-
-  // 4. THE SYNC FIX: Screen only hides if BOTH are explicitly true
-  if (players.player0 === true && players.player1 === true) {
-    waitingScreen.classList.add("hidden");
-  } else {
-    waitingScreen.classList.remove("hidden");
-    if (playerNumber === 0) {
-      waitingText.textContent = "You are P1. Waiting for P2 to join...";
-    } else if (playerNumber === 1) {
-      waitingText.textContent = "You are P2. Syncing with P1...";
+    // Toggle Waiting Screen
+    if (players.player0 && players.player1) {
+      waitingScreen.classList.add("hidden");
+    } else {
+      waitingScreen.classList.remove("hidden");
+      waitingText.textContent =
+        playerNumber === 0
+          ? "Waiting for Player 2..."
+          : "Waiting for Player 1...";
     }
   }
 });
 
-// --- 2. GAME STATE SYNC ---
+// --- 3. GAME STATE SYNC ---
 onValue(gameRef, (snapshot) => {
   const state = snapshot.val();
 
-  // If the other player reset the game, we must refresh to re-join
+  // If database is wiped, force re-join
   if (!state && sessionStorage.getItem("playerAssigned") !== null) {
     sessionStorage.clear();
     window.location.reload();
@@ -107,6 +125,7 @@ onValue(gameRef, (snapshot) => {
     diceOne.classList.toggle("hidden", state.dice !== 1);
   } else {
     diceEl.classList.add("hidden");
+    diceOne.classList.add("hidden");
   }
 
   player0El.classList.toggle("player--active", activePlayer === 0);
@@ -134,7 +153,7 @@ function syncState(dice = null) {
   set(gameRef, { scores, currentScore, activePlayer, playing, dice });
 }
 
-// --- 3. ACTIONS ---
+// --- 4. ACTIONS ---
 btnRoll.addEventListener("click", () => {
   if (!playing || playerNumber !== activePlayer) return;
   const dice = Math.trunc(Math.random() * 6) + 1;
