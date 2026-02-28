@@ -1,16 +1,16 @@
-// firebase.js
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-app.js";
 import {
   getDatabase,
   ref,
   set,
   onValue,
+  update,
 } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyAMIKAyf5JFPhGpiB-tuVeGd1tSnaXQUNI",
   authDomain: "pig-game-41ca2.firebaseapp.com",
-  databaseURL: "https://pig-game-41ca2-default-rtdb.firebaseio.com", // ⭐ REQUIRED ⭐
+  databaseURL: "https://pig-game-41ca2-default-rtdb.firebaseio.com",
   projectId: "pig-game-41ca2",
   storageBucket: "pig-game-41ca2.firebasestorage.app",
   messagingSenderId: "551642516001",
@@ -21,4 +21,4 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
-export { db, ref, set, onValue };
+export { db, ref, set, onValue, update };
