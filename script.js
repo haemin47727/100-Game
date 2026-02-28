@@ -1,8 +1,11 @@
-// script.js
 "use strict";
+
 import { db, ref, set, onValue } from "./firebase.js";
+
+// Waiting screen
 const waitingScreen = document.getElementById("waiting-screen");
 const waitingText = document.getElementById("waiting-text");
+
 // Selecting elements
 const player0El = document.querySelector(".player--0");
 const player1El = document.querySelector(".player--1");
@@ -31,22 +34,27 @@ const playersRef = ref(db, "pigGame/players");
 onValue(playersRef, (snapshot) => {
   const players = snapshot.val() || {};
 
-  // Assign player number
-  if (playerNumber === null) {
+  // Only assign once per browser session
+  if (!sessionStorage.getItem("playerAssigned")) {
     if (!players.player0) {
       set(playersRef, { ...players, player0: true });
       playerNumber = 0;
+      sessionStorage.setItem("playerAssigned", "0");
       waitingText.textContent = "Waiting for Player 2 to join...";
       waitingScreen.classList.remove("hidden");
     } else if (!players.player1) {
       set(playersRef, { ...players, player1: true });
       playerNumber = 1;
+      sessionStorage.setItem("playerAssigned", "1");
       waitingText.textContent = "Waiting for Player 1 to start...";
       waitingScreen.classList.remove("hidden");
     } else {
       alert("Game is full!");
       return;
     }
+  } else {
+    // Restore player number from session
+    playerNumber = Number(sessionStorage.getItem("playerAssigned"));
   }
 
   // Hide waiting screen when both players are present
