@@ -29,65 +29,58 @@ let playing = true;
 const gameRef = ref(db, "pigGame/state");
 const playersRef = ref(db, "pigGame/players");
 
-// --- 1. THE JOINING LOGIC (STRICTER) ---
-const joinGame = () => {
-  onValue(
-    playersRef,
-    (snapshot) => {
-      const players = snapshot.val() || {};
-      const savedID = sessionStorage.getItem("playerAssigned");
+// --- 1. STRICT JOINING LOGIC ---
+onValue(playersRef, (snapshot) => {
+  const players = snapshot.val() || {};
 
-      // Case A: I already have an ID
-      if (savedID !== null) {
-        playerNumber = Number(savedID);
+  // 1. Determine who I am
+  if (playerNumber === null) {
+    const savedID = sessionStorage.getItem("playerAssigned");
+    if (savedID !== null) {
+      playerNumber = Number(savedID);
+    } else {
+      if (!players.player0) {
+        playerNumber = 0;
+        sessionStorage.setItem("playerAssigned", "0");
+        update(playersRef, { player0: true });
+      } else if (!players.player1) {
+        playerNumber = 1;
+        sessionStorage.setItem("playerAssigned", "1");
+        update(playersRef, { player1: true });
       }
-      // Case B: I don't have an ID yet
-      else {
-        if (!players.player0) {
-          playerNumber = 0;
-          sessionStorage.setItem("playerAssigned", "0");
-          update(playersRef, { player0: true });
-        } else if (!players.player1) {
-          playerNumber = 1;
-          sessionStorage.setItem("playerAssigned", "1");
-          update(playersRef, { player1: true });
-        } else {
-          waitingText.textContent = "Game Full! Try Resetting.";
-          return;
-        }
-      }
+    }
+  }
 
-      // Set up disconnect cleanup
-      onDisconnect(ref(db, `pigGame/players/player${playerNumber}`)).remove();
+  // 2. Set up the "I'm leaving" trigger
+  if (playerNumber !== null) {
+    onDisconnect(ref(db, `pigGame/players/player${playerNumber}`)).remove();
+  }
 
-      // Update UI Labels
-      document.getElementById("name--0").textContent =
-        playerNumber === 0 ? "P1 (YOU)" : "Player 1";
-      document.getElementById("name--1").textContent =
-        playerNumber === 1 ? "P2 (YOU)" : "Player 2";
+  // 3. UI Updates
+  document.getElementById("name--0").textContent =
+    playerNumber === 0 ? "P1 (YOU)" : "Player 1";
+  document.getElementById("name--1").textContent =
+    playerNumber === 1 ? "P2 (YOU)" : "Player 2";
 
-      // IMPORTANT: Check if BOTH exist to hide waiting screen
-      if (players.player0 && players.player1) {
-        waitingScreen.classList.add("hidden");
-      } else {
-        waitingScreen.classList.remove("hidden");
-        waitingText.textContent =
-          playerNumber === 0
-            ? "Waiting for Player 2..."
-            : "Waiting for Player 1...";
-      }
-    },
-    { onlyOnce: false },
-  );
-};
+  // 4. THE FIX: Only hide screen if BOTH player0 and player1 are EXACTLY true
+  if (players.player0 === true && players.player1 === true) {
+    waitingScreen.classList.add("hidden");
+    console.log("Both players detected. Game Start.");
+  } else {
+    waitingScreen.classList.remove("hidden");
+    waitingText.textContent =
+      playerNumber === 0
+        ? "Waiting for Player 2..."
+        : "Waiting for Player 1...";
+    console.log("Waiting for opponent...");
+  }
+});
 
-joinGame();
-
-// --- 2. GAME STATE SYNC ---
+// --- 2. STATE SYNC ---
 onValue(gameRef, (snapshot) => {
   const state = snapshot.val();
 
-  // Detect if someone clicked Reset All
+  // If database is wiped, force everyone to re-join
   if (!state && sessionStorage.getItem("playerAssigned") !== null) {
     sessionStorage.clear();
     window.location.reload();
@@ -120,6 +113,7 @@ onValue(gameRef, (snapshot) => {
   player0El.classList.toggle("player--active", activePlayer === 0);
   player1El.classList.toggle("player--active", activePlayer === 1);
 
+  // Button locking
   const isMyTurn = playerNumber === activePlayer && playing;
   btnRoll.disabled = !isMyTurn;
   btnHold.disabled = !isMyTurn;
