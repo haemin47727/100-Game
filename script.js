@@ -17,7 +17,6 @@ const btnRoll = document.querySelector(".btn--roll");
 const btnHold = document.querySelector(".btn--hold");
 const btnReset = document.querySelector(".btn--reset");
 const btnResetMini = document.querySelector(".btn--reset-mini");
-const diceOne = document.querySelector(".one");
 
 // Local state
 let playerNumber = null;
@@ -29,20 +28,20 @@ let playing = true;
 const gameRef = ref(db, "pigGame/state");
 const playersRef = ref(db, "pigGame/players");
 
-// --- 1. THE STEADY JOINING LOGIC (NO BLINKING) ---
+// --- 1. THE STABILIZED JOINING LOGIC ---
 
 const initConnection = () => {
   const savedID = sessionStorage.getItem("playerAssigned");
 
   if (savedID !== null) {
     playerNumber = Number(savedID);
-    setupPresence();
+    startMultiplayerLogic();
   } else {
-    // Check database ONCE to find an empty slot
+    // Look at database ONCE to pick a free slot
     onValue(
       playersRef,
       (snapshot) => {
-        if (playerNumber !== null) return; // Prevent double assignment
+        if (playerNumber !== null) return;
 
         const players = snapshot.val() || {};
         if (!players.player0) {
@@ -53,35 +52,34 @@ const initConnection = () => {
           playerNumber = 1;
           sessionStorage.setItem("playerAssigned", "1");
           update(playersRef, { player1: true });
+        } else {
+          waitingText.textContent = "Game is Full! Reset required.";
+          return;
         }
-        setupPresence();
+
+        startMultiplayerLogic();
       },
       { onlyOnce: true },
     );
   }
 };
 
-const setupPresence = () => {
-  if (playerNumber === null) return;
-  // Cleanup if tab closes
+function startMultiplayerLogic() {
+  // A. Clean up if tab closes
   onDisconnect(ref(db, `pigGame/players/player${playerNumber}`)).remove();
-};
 
-initConnection();
+  // B. Monitor Player Presence (Handles Waiting Screen)
+  onValue(playersRef, (snapshot) => {
+    const players = snapshot.val() || {};
 
-// --- 2. THE UI MONITOR (Watches for Opponent) ---
-onValue(playersRef, (snapshot) => {
-  const players = snapshot.val() || {};
-
-  if (playerNumber !== null) {
-    // Update Labels
+    // Update Player Name UI
     document.getElementById("name--0").textContent =
       playerNumber === 0 ? "P1 (YOU)" : "Player 1";
     document.getElementById("name--1").textContent =
       playerNumber === 1 ? "P2 (YOU)" : "Player 2";
 
-    // Toggle Waiting Screen
-    if (players.player0 && players.player1) {
+    // Show/Hide waiting screen based on BOTH players being true
+    if (players.player0 === true && players.player1 === true) {
       waitingScreen.classList.add("hidden");
     } else {
       waitingScreen.classList.remove("hidden");
@@ -90,70 +88,71 @@ onValue(playersRef, (snapshot) => {
           ? "Waiting for Player 2..."
           : "Waiting for Player 1...";
     }
-  }
-});
+  });
 
-// --- 3. GAME STATE SYNC ---
-onValue(gameRef, (snapshot) => {
-  const state = snapshot.val();
+  // C. Monitor Game State Sync
+  onValue(gameRef, (snapshot) => {
+    const state = snapshot.val();
 
-  // If database is wiped, force re-join
-  if (!state && sessionStorage.getItem("playerAssigned") !== null) {
-    sessionStorage.clear();
-    window.location.reload();
-    return;
-  }
+    // If game node is deleted (Reset All), force a fresh start
+    if (!state && sessionStorage.getItem("playerAssigned") !== null) {
+      sessionStorage.clear();
+      window.location.reload();
+      return;
+    }
 
-  if (!state) {
-    if (playerNumber === 0) syncState();
-    return;
-  }
+    if (!state) {
+      if (playerNumber === 0) syncState();
+      return;
+    }
 
-  scores = state.scores || [0, 0];
-  currentScore = state.currentScore || 0;
-  activePlayer = state.activePlayer ?? 0;
-  playing = state.playing ?? true;
+    // Sync local variables with Firebase
+    scores = state.scores || [0, 0];
+    currentScore = state.currentScore || 0;
+    activePlayer = state.activePlayer ?? 0;
+    playing = state.playing ?? true;
 
-  score0El.textContent = scores[0];
-  score1El.textContent = scores[1];
-  current0El.textContent = activePlayer === 0 ? currentScore : 0;
-  current1El.textContent = activePlayer === 1 ? currentScore : 0;
+    // Update UI
+    score0El.textContent = scores[0];
+    score1El.textContent = scores[1];
+    current0El.textContent = activePlayer === 0 ? currentScore : 0;
+    current1El.textContent = activePlayer === 1 ? currentScore : 0;
 
-  if (state.dice && playing) {
-    diceEl.classList.remove("hidden");
-    diceEl.src = `dice-${state.dice}.png`;
-    diceOne.classList.toggle("hidden", state.dice !== 1);
-  } else {
-    diceEl.classList.add("hidden");
-    diceOne.classList.add("hidden");
-  }
+    if (state.dice && playing) {
+      diceEl.classList.remove("hidden");
+      diceEl.src = `dice-${state.dice}.png`;
+    } else {
+      diceEl.classList.add("hidden");
+    }
 
-  player0El.classList.toggle("player--active", activePlayer === 0);
-  player1El.classList.toggle("player--active", activePlayer === 1);
+    player0El.classList.toggle("player--active", activePlayer === 0);
+    player1El.classList.toggle("player--active", activePlayer === 1);
 
-  // Turn Enforcement
-  const isMyTurn = playerNumber === activePlayer && playing;
-  btnRoll.disabled = !isMyTurn;
-  btnHold.disabled = !isMyTurn;
-  btnRoll.style.opacity = isMyTurn ? "1" : "0.3";
-  btnHold.style.opacity = isMyTurn ? "1" : "0.3";
+    // Turn Locking Logic
+    const isMyTurn = playerNumber === activePlayer && playing;
+    btnRoll.disabled = !isMyTurn;
+    btnHold.disabled = !isMyTurn;
+    btnRoll.style.opacity = isMyTurn ? "1" : "0.3";
+    btnHold.style.opacity = isMyTurn ? "1" : "0.3";
 
-  if (!playing) {
-    const winner = scores[0] >= 100 ? 0 : 1;
-    document
-      .querySelector(`.player--${winner}`)
-      .classList.add("player--winner");
-  } else {
-    player0El.classList.remove("player--winner");
-    player1El.classList.remove("player--winner");
-  }
-});
+    if (!playing) {
+      const winner = scores[0] >= 100 ? 0 : 1;
+      document
+        .querySelector(`.player--${winner}`)
+        .classList.add("player--winner");
+    } else {
+      player0El.classList.remove("player--winner");
+      player1El.classList.remove("player--winner");
+    }
+  });
+}
 
 function syncState(dice = null) {
   set(gameRef, { scores, currentScore, activePlayer, playing, dice });
 }
 
-// --- 4. ACTIONS ---
+// --- 2. GAME ACTIONS ---
+
 btnRoll.addEventListener("click", () => {
   if (!playing || playerNumber !== activePlayer) return;
   const dice = Math.trunc(Math.random() * 6) + 1;
@@ -187,6 +186,7 @@ btnNew.addEventListener("click", () => {
 });
 
 const fullReset = () => {
+  // Clear the entire game path in Firebase
   set(ref(db, "pigGame"), null);
   sessionStorage.clear();
   window.location.reload();
@@ -194,3 +194,6 @@ const fullReset = () => {
 
 btnReset.addEventListener("click", fullReset);
 btnResetMini.addEventListener("click", fullReset);
+
+// Start the app
+initConnection();
