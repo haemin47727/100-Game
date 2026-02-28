@@ -1,5 +1,6 @@
 "use strict";
-
+// Force a fresh session every time the tab loads
+sessionStorage.clear();
 import { db, ref, set, onValue } from "./firebase.js";
 
 // Waiting screen
