@@ -24,7 +24,7 @@ const diceEl = document.querySelector(".dice");
 const btnNew = document.querySelector(".btn--new");
 const btnRoll = document.querySelector(".btn--roll");
 const btnHold = document.querySelector(".btn--hold");
-const btnReset = document.querySelector(".btn--reset");
+// const btnReset = document.querySelector(".btn--reset");
 
 // Local state
 let playerNumber = null;
@@ -172,7 +172,7 @@ btnRoll.addEventListener("click", () => {
     const nextPlayer = activePlayer === 0 ? 1 : 0;
     syncState(dice, {
       activePlayer: nextPlayer,
-      message: "Oink 🐷 you were greedy! You rolled a 1!",
+      message: "Oink 🐷 You rolled a 1! You greedy pig!",
     });
   }
 });
@@ -192,10 +192,10 @@ btnHold.addEventListener("click", () => {
 
 btnNew.addEventListener("click", () => resetGameState());
 
-btnReset.addEventListener("click", () => {
-  set(ref(db, "pigGame"), null);
-  sessionStorage.clear();
-  window.location.reload();
-});
+// btnReset.addEventListener("click", () => {
+//   set(ref(db, "pigGame"), null);
+//   sessionStorage.clear();
+//   window.location.reload();
+// });
 
 startApp();
