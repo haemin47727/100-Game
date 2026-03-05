@@ -177,15 +177,6 @@ main {
 .btn--hold {
   top: 46.1rem;
 }
-/* .btn--reset {
-  top: 52.9rem;
-  background-color: rgba(255, 0, 0, 0.2);
-} */
-/* .btn--reset-mini {
-  position: static;
-  transform: none;
-  margin-top: 20px;
-} */
 
 .dice {
   position: absolute;
